@@ -1,0 +1,18 @@
+BUILD_GUIDE.md
+build.ps1
+games_cache.json
+Steam Review Generator.spec
+build/Steam Review Generator/Analysis-00.toc
+build/Steam Review Generator/base_library.zip
+build/Steam Review Generator/EXE-00.toc
+build/Steam Review Generator/PKG-00.toc
+build/Steam Review Generator/PYZ-00.pyz
+build/Steam Review Generator/PYZ-00.toc
+build/Steam Review Generator/Steam Review Generator.pkg
+build/Steam Review Generator/warn-Steam Review Generator.txt
+build/Steam Review Generator/xref-Steam Review Generator.html
+build/Steam Review Generator/localpycs/pyimod01_archive.pyc
+build/Steam Review Generator/localpycs/pyimod02_importers.pyc
+build/Steam Review Generator/localpycs/pyimod03_ctypes.pyc
+build/Steam Review Generator/localpycs/pyimod04_pywin32.pyc
+build/Steam Review Generator/localpycs/struct.pyc
