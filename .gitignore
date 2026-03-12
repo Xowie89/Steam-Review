@@ -17,3 +17,4 @@ build/Steam Review Generator/localpycs/pyimod03_ctypes.pyc
 build/Steam Review Generator/localpycs/pyimod04_pywin32.pyc
 build/Steam Review Generator/localpycs/struct.pyc
 dist/steam_credentials.json
+steam_credentials.json
