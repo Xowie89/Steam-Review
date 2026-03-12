@@ -24,6 +24,7 @@ STEAM_PANEL = "#16202d"
 STEAM_ACCENT = "#66c0f4"
 WINDOW_WIDTH = 600
 WINDOW_HEIGHT = 800
+LOGIN_WINDOW_HEIGHT = 920
 GITHUB_REPO_URL = "https://github.com/Xowie89/Steam-Review"
 GITHUB_RELEASES_URL = f"{GITHUB_REPO_URL}/releases/latest"
 GITHUB_ISSUES_URL = f"{GITHUB_REPO_URL}/issues"
@@ -211,14 +212,16 @@ def get_app_version():
     return app_version_cache
 
 def add_version_footer(parent):
-    """Show subtle version text at the bottom-right of a screen."""
+    """Show persistent version text at the bottom-right of a screen."""
     version_label = ctk.CTkLabel(
         parent,
         text=f"Version {get_app_version()}",
-        font=("Arial", 10),
-        text_color="#7f8d99"
+        font=("Arial", 11),
+        text_color="#9fb6c4"
     )
-    version_label.pack(side="bottom", anchor="e", padx=12, pady=(4, 6))
+    # Use absolute anchoring so the footer stays visible regardless of pack layout.
+    version_label.place(relx=0.985, rely=0.985, anchor="se")
+    version_label.lift()
 
 def normalize_version_tuple(version_text):
     """Extract version numbers from tags like v1.2.3."""
@@ -888,6 +891,7 @@ def show_login_screen():
     """Show the login screen"""
     global current_screen
     current_screen = "login"
+    app.geometry(f"{WINDOW_WIDTH}x{LOGIN_WINDOW_HEIGHT}")
     
     # Clear current content
     for widget in main_frame.winfo_children():
@@ -916,10 +920,38 @@ def show_login_screen():
     subtitle.pack(pady=(0, 30))
 
     create_update_banner(login_frame, padx=20, pady=(0, 16))
+
+    # Instructions (move higher and give more vertical space for readability)
+    instructions_frame = ctk.CTkFrame(login_frame, fg_color=STEAM_BG)
+    instructions_frame.pack(fill="x", padx=20, pady=(0, 14))
+
+    instructions_title = ctk.CTkLabel(instructions_frame, text="How to get your credentials:", font=("Arial", 14, "bold"), text_color=STEAM_ACCENT)
+    instructions_title.pack(pady=(15, 10))
+
+    instructions_text = tk.Text(instructions_frame, height=10, width=50, bg=STEAM_BG, fg="#cccccc", font=("Arial", 11), wrap="word", borderwidth=0, highlightthickness=0)
+    instructions_text.pack(pady=(0, 15))
+
+    # Insert text with clickable links
+    instructions_text.insert("1.0", "1. Visit ")
+    instructions_text.insert("end", "https://steamcommunity.com/dev/apikey", "link1")
+    instructions_text.insert("end", "\n2. Sign in with your Steam account\n3. Create an API key for this application\n\n4. Visit ")
+    instructions_text.insert("end", "https://steamid.io/", "link2")
+    instructions_text.insert("end", "\n5. Enter your Steam profile URL or username\n6. Copy the 64-bit Steam ID")
+
+    # Configure link tags
+    instructions_text.tag_configure("link1", foreground="#66c0f4", underline=True)
+    instructions_text.tag_configure("link2", foreground="#66c0f4", underline=True)
+
+    # Bind clicks to open URLs
+    instructions_text.tag_bind("link1", "<Button-1>", lambda e: webbrowser.open("https://steamcommunity.com/dev/apikey"))
+    instructions_text.tag_bind("link2", "<Button-1>", lambda e: webbrowser.open("https://steamid.io/"))
+
+    # Make text read-only
+    instructions_text.config(state="disabled")
     
     # API Key input
     api_key_label = ctk.CTkLabel(login_frame, text="Steam API Key:", font=("Arial", 14))
-    api_key_label.pack(pady=(20, 5))
+    api_key_label.pack(pady=(12, 5))
     global steam_api_key_entry
     steam_api_key_entry = ctk.CTkEntry(login_frame, width=400, placeholder_text="Enter your Steam API key...")
     steam_api_key_entry.pack(pady=(0, 10))
@@ -931,7 +963,7 @@ def show_login_screen():
     
     # Steam ID input
     steam_id_label = ctk.CTkLabel(login_frame, text="Steam ID (64-bit):", font=("Arial", 14))
-    steam_id_label.pack(pady=(10, 5))
+    steam_id_label.pack(pady=(8, 5))
     global steam_id_entry
     steam_id_entry = ctk.CTkEntry(login_frame, width=400, placeholder_text="Enter your 64-bit Steam ID...")
     steam_id_entry.pack(pady=(0, 20))
@@ -944,44 +976,16 @@ def show_login_screen():
     # Login button
     global login_btn
     login_btn = ctk.CTkButton(login_frame, text="Login & Fetch Games", command=login_and_fetch, fg_color=STEAM_ACCENT, height=40)
-    login_btn.pack(pady=(10, 20))
+    login_btn.pack(pady=(10, 12))
     
     # Status label
     global status_label
     status_label = ctk.CTkLabel(login_frame, text="", font=("Arial", 12))
-    status_label.pack(pady=(0, 20))
+    status_label.pack(pady=(0, 8))
 
     # Login progress indicator (shown only during background fetch)
     global login_progress
     login_progress = ctk.CTkProgressBar(login_frame, width=300, mode="indeterminate")
-    
-    # Instructions
-    instructions_frame = ctk.CTkFrame(login_frame, fg_color=STEAM_BG)
-    instructions_frame.pack(fill="x", padx=20, pady=10)
-    
-    instructions_title = ctk.CTkLabel(instructions_frame, text="How to get your credentials:", font=("Arial", 14, "bold"), text_color=STEAM_ACCENT)
-    instructions_title.pack(pady=(15, 10))
-    
-    instructions_text = tk.Text(instructions_frame, height=8, width=50, bg=STEAM_BG, fg="#cccccc", font=("Arial", 11), wrap="word", borderwidth=0, highlightthickness=0)
-    instructions_text.pack(pady=(0, 15))
-    
-    # Insert text with clickable links
-    instructions_text.insert("1.0", "1. Visit ")
-    instructions_text.insert("end", "https://steamcommunity.com/dev/apikey", "link1")
-    instructions_text.insert("end", "\n2. Sign in with your Steam account\n3. Create an API key for this application\n\n4. Visit ")
-    instructions_text.insert("end", "https://steamid.io/", "link2")
-    instructions_text.insert("end", "\n5. Enter your Steam profile URL or username\n6. Copy the 64-bit Steam ID")
-    
-    # Configure link tags
-    instructions_text.tag_configure("link1", foreground="#66c0f4", underline=True)
-    instructions_text.tag_configure("link2", foreground="#66c0f4", underline=True)
-    
-    # Bind clicks to open URLs
-    instructions_text.tag_bind("link1", "<Button-1>", lambda e: webbrowser.open("https://steamcommunity.com/dev/apikey"))
-    instructions_text.tag_bind("link2", "<Button-1>", lambda e: webbrowser.open("https://steamid.io/"))
-    
-    # Make text read-only
-    instructions_text.config(state="disabled")
     
     # Load saved credentials
     saved_api_key, saved_steam_id = load_credentials()
@@ -997,6 +1001,7 @@ def show_games_screen():
     """Show the games selection screen"""
     global current_screen, preview, rating_frame, sort_mode_var, selected_game_index
     current_screen = "games"
+    app.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
     selected_game_index = -1
     
     # Destroy preview textbox if it exists
@@ -1737,7 +1742,10 @@ else:
     # Show login screen
     show_login_screen()
 
-# Set window size
-app.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+# Set initial window size based on the active startup screen.
+if current_screen == "login":
+    app.geometry(f"{WINDOW_WIDTH}x{LOGIN_WINDOW_HEIGHT}")
+else:
+    app.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
 
 app.mainloop()
