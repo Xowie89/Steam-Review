@@ -1,20 +1,80 @@
-BUILD_GUIDE.md
+# ------------------------------
+# OS / editor junk
+# ------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ------------------------------
+# Python cache and test output
+# ------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ------------------------------
+# Virtual environments
+# ------------------------------
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ------------------------------
+# Build / packaging artifacts
+# ------------------------------
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+.tools/
+
+# Local build tooling/config
 build.ps1
+BUILD_GUIDE.md
+requirements-build.txt
+version_info.txt
+*.spec
+steam.ico
+
+# ------------------------------
+# Runtime data (local-only)
+# ------------------------------
 games_cache.json
-Steam Review Generator.spec
-build/Steam Review Generator/Analysis-00.toc
-build/Steam Review Generator/base_library.zip
-build/Steam Review Generator/EXE-00.toc
-build/Steam Review Generator/PKG-00.toc
-build/Steam Review Generator/PYZ-00.pyz
-build/Steam Review Generator/PYZ-00.toc
-build/Steam Review Generator/Steam Review Generator.pkg
-build/Steam Review Generator/warn-Steam Review Generator.txt
-build/Steam Review Generator/xref-Steam Review Generator.html
-build/Steam Review Generator/localpycs/pyimod01_archive.pyc
-build/Steam Review Generator/localpycs/pyimod02_importers.pyc
-build/Steam Review Generator/localpycs/pyimod03_ctypes.pyc
-build/Steam Review Generator/localpycs/pyimod04_pywin32.pyc
-build/Steam Review Generator/localpycs/struct.pyc
-dist/steam_credentials.json
 steam_credentials.json
+**/games_cache.json
+**/steam_credentials.json
+
+# ------------------------------
+# Secrets and local config
+# ------------------------------
+.env
+.env.*
+*.env
+*.local
+*.secret
+*.secrets
+secrets.*
+credentials*.json
+*.key
+*.pem
+*.p12
+*.pfx
+
+# ------------------------------
+# Logs
+# ------------------------------
+*.log
+logs/

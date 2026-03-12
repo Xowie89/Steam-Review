@@ -18,10 +18,17 @@ The app automatically calculates a final score using weighted categories, shows 
 - Login using your **Steam API key** and **64-bit Steam ID**
 - Automatically fetches your owned Steam games
 - Search your library quickly
-- Review games category by category
+- Review games category by category with explicit **Previous/Next** step navigation
+- Pre-review game summary screen (name, AppID, and playtime)
 - Weighted score calculation for more meaningful ratings
 - Animated 10-box rating bar
 - Automatically copies the completed review to clipboard
+- Copy the review again with one click from the result screen
+- Save generated reviews as **.txt** or **.md**
+- Edit category ratings from the result screen without restarting
+- In-app **About** dialog with version, latest release/release notes, and issue links
+- Automatic update checker banner with one-click download when updates are available
+- Visible in-app version footer on main screens
 - Saves credentials locally for quick relogin
 - Caches your game list for faster loading
 
@@ -59,9 +66,11 @@ This means **Gameplay** and **Bugs** have the biggest impact on the final rating
 2. Enter your Steam API key and 64-bit Steam ID
 3. Fetch your Steam library
 4. Search and select a game
-5. Rate each category one at a time
-6. View the generated review
-7. The review is automatically copied to your clipboard
+5. Confirm game details on the summary screen
+6. Rate each category with Previous/Next controls
+7. View the generated review
+8. The review is automatically copied to your clipboard
+9. Optionally use **Copy Again**, **Edit Ratings**, or save it as `.txt` / `.md`
 
 ---
 
