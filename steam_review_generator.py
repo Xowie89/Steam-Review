@@ -5,6 +5,7 @@ import json
 import webbrowser
 import os
 import re
+import sys
 import tkinter as tk
 from tkinter import filedialog
 import importlib
@@ -191,10 +192,17 @@ update_banner_action_btn = None
 # ------------------ FUNCTIONS ------------------
 
 def get_app_version():
-    """Read version from version_info.txt when available."""
+    """Resolve app version from EXE metadata or version_info.txt."""
     global app_version_cache
     if app_version_cache:
         return app_version_cache
+
+    # In packaged Windows builds, prefer the executable ProductVersion resource.
+    if os.name == "nt" and getattr(sys, "frozen", False):
+        exe_version = get_windows_product_version(sys.executable)
+        if exe_version:
+            app_version_cache = exe_version
+            return app_version_cache
 
     version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version_info.txt")
     try:
@@ -210,6 +218,60 @@ def get_app_version():
 
     app_version_cache = "dev"
     return app_version_cache
+
+def get_windows_product_version(file_path):
+    """Read ProductVersion from Windows version resources."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        size = ctypes.windll.version.GetFileVersionInfoSizeW(file_path, None)
+        if not size:
+            return None
+
+        raw_data = ctypes.create_string_buffer(size)
+        ok = ctypes.windll.version.GetFileVersionInfoW(file_path, 0, size, raw_data)
+        if not ok:
+            return None
+
+        value_ptr = ctypes.c_void_p()
+        value_len = wintypes.UINT(0)
+        translations = []
+
+        has_translation = ctypes.windll.version.VerQueryValueW(
+            raw_data,
+            r"\\VarFileInfo\\Translation",
+            ctypes.byref(value_ptr),
+            ctypes.byref(value_len)
+        )
+        if has_translation and value_len.value >= 4:
+            raw_translations = ctypes.string_at(value_ptr, value_len.value)
+            for idx in range(0, value_len.value, 4):
+                lang = int.from_bytes(raw_translations[idx:idx + 2], byteorder="little")
+                codepage = int.from_bytes(raw_translations[idx + 2:idx + 4], byteorder="little")
+                translations.append(f"{lang:04X}{codepage:04X}")
+
+        if not translations:
+            translations = ["040904B0", "040904E4"]
+
+        for translation in translations:
+            block = f"\\\\StringFileInfo\\\\{translation}\\\\ProductVersion"
+            found_version = ctypes.windll.version.VerQueryValueW(
+                raw_data,
+                block,
+                ctypes.byref(value_ptr),
+                ctypes.byref(value_len)
+            )
+            if found_version and value_len.value:
+                version_text = ctypes.wstring_at(value_ptr, value_len.value).rstrip("\x00").strip()
+                if version_text:
+                    return version_text
+    except Exception:
+        return None
+
+    return None
 
 def add_version_footer(parent):
     """Show persistent version text at the bottom-right of a screen."""
