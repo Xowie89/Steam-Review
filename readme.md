@@ -1,5 +1,11 @@
 # Steam Review Generator
 
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+[![Download](https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github)](https://github.com/Xowie89/Steam-Review/releases/latest)
+
 A Steam-styled desktop app built with **CustomTkinter** that lets you log in with your Steam API credentials, load your game library, select a game, and generate a formatted review based on category ratings.
 
 The app automatically calculates a final score using weighted categories, shows an animated rating bar, and copies the finished review straight to your clipboard.
