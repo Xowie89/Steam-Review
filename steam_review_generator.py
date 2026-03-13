@@ -188,6 +188,9 @@ update_check_in_progress = False
 update_auto_check_started = False
 update_banner_status_label = None
 update_banner_action_btn = None
+about_action_button = None
+about_update_toast_label = None
+about_update_toast_after_id = None
 
 # ------------------ FUNCTIONS ------------------
 
@@ -297,6 +300,64 @@ def set_update_banner_widgets(status_label, action_button):
     update_banner_action_btn = action_button
     refresh_update_banner_ui()
 
+def clear_about_update_toast():
+    """Remove the temporary About-button update toast if visible."""
+    global about_update_toast_label, about_update_toast_after_id
+
+    if about_update_toast_after_id:
+        try:
+            app.after_cancel(about_update_toast_after_id)
+        except Exception:
+            pass
+    about_update_toast_after_id = None
+
+    if about_update_toast_label and about_update_toast_label.winfo_exists():
+        about_update_toast_label.destroy()
+    about_update_toast_label = None
+
+def show_about_update_toast():
+    """Show a short toast near the About button when an update is available."""
+    global about_update_toast_label, about_update_toast_after_id
+
+    if not about_action_button or not about_action_button.winfo_exists():
+        return
+
+    clear_about_update_toast()
+
+    toast_parent = about_action_button.master
+    about_update_toast_label = ctk.CTkLabel(
+        toast_parent,
+        text="Update available - open About",
+        font=("Arial", 11, "bold"),
+        text_color="#ffe8b5",
+        fg_color="#8b5a1e",
+        corner_radius=8
+    )
+    # Place toast directly under the About button so the call-to-action is obvious.
+    about_update_toast_label.place(in_=about_action_button, relx=0.5, rely=1.0, y=8, anchor="n")
+    about_update_toast_label.lift()
+    about_update_toast_after_id = app.after(5000, clear_about_update_toast)
+
+def refresh_about_button_attention(show_toast=False):
+    """Update About button styling and optional toast from update checker state."""
+    if not about_action_button or not about_action_button.winfo_exists():
+        clear_about_update_toast()
+        return
+
+    if update_check_state == "update_available":
+        about_action_button.configure(text="About !", fg_color="#8b5a1e", hover_color="#a36b27")
+        if show_toast:
+            show_about_update_toast()
+    else:
+        about_action_button.configure(text="About", fg_color="#2f556f", hover_color="#3a6684")
+        clear_about_update_toast()
+
+def set_about_button_widget(button):
+    """Track active About button on the current screen."""
+    global about_action_button
+    about_action_button = button
+    refresh_about_button_attention(show_toast=(update_check_state == "update_available"))
+
 def open_update_download_page():
     """Open latest release page in browser."""
     webbrowser.open(update_download_url or GITHUB_RELEASES_URL)
@@ -355,6 +416,7 @@ def complete_update_check(state, message, latest_version="", release_url=GITHUB_
     update_download_url = release_url
     update_check_in_progress = False
     refresh_update_banner_ui()
+    refresh_about_button_attention(show_toast=(state == "update_available"))
 
 def update_check_worker():
     """Background worker that queries latest GitHub release and compares versions."""
@@ -451,6 +513,7 @@ def start_update_check(force=False):
     update_check_message = "Checking for updates..."
     update_check_in_progress = True
     refresh_update_banner_ui()
+    refresh_about_button_attention(show_toast=False)
     threading.Thread(target=update_check_worker, daemon=True).start()
 
 def ensure_auto_update_check():
@@ -501,6 +564,7 @@ def close_about_dialog():
 def show_about_dialog():
     """Display release-oriented app info, version, and support links."""
     global about_dialog
+    clear_about_update_toast()
     if about_dialog and about_dialog.winfo_exists():
         about_dialog.lift()
         about_dialog.focus_force()
@@ -544,14 +608,7 @@ def show_about_dialog():
     )
     info_label.pack(pady=(0, 14))
 
-    check_update_btn = ctk.CTkButton(
-        about_frame,
-        text="Check for Updates",
-        command=lambda: start_update_check(force=True),
-        fg_color="#2f556f",
-        width=180
-    )
-    check_update_btn.pack(pady=(0, 12))
+    create_update_banner(about_frame, padx=14, pady=(0, 12))
 
     links_frame = ctk.CTkFrame(about_frame, fg_color="transparent")
     links_frame.pack(pady=(0, 14))
@@ -954,6 +1011,7 @@ def show_login_screen():
     global current_screen
     current_screen = "login"
     app.geometry(f"{WINDOW_WIDTH}x{LOGIN_WINDOW_HEIGHT}")
+    ensure_auto_update_check()
     
     # Clear current content
     for widget in main_frame.winfo_children():
@@ -974,14 +1032,13 @@ def show_login_screen():
         height=30
     )
     about_btn.pack(side="right")
+    set_about_button_widget(about_btn)
     
     login_title = ctk.CTkLabel(login_frame, text="Steam Review Generator", font=("Arial", 28, "bold"), text_color=STEAM_ACCENT)
     login_title.pack(pady=(30, 10))
     
     subtitle = ctk.CTkLabel(login_frame, text="Login with your Steam credentials", font=("Arial", 16), text_color="#cccccc")
     subtitle.pack(pady=(0, 30))
-
-    create_update_banner(login_frame, padx=20, pady=(0, 16))
 
     # Instructions (move higher and give more vertical space for readability)
     instructions_frame = ctk.CTkFrame(login_frame, fg_color=STEAM_BG)
@@ -1065,6 +1122,7 @@ def show_games_screen():
     current_screen = "games"
     app.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
     selected_game_index = -1
+    ensure_auto_update_check()
     
     # Destroy preview textbox if it exists
     if preview:
@@ -1107,9 +1165,8 @@ def show_games_screen():
 
     about_btn = ctk.CTkButton(header_frame, text="About", command=show_about_dialog, fg_color="#2f556f", width=80, height=30)
     about_btn.pack(side="right", padx=(0, 8))
+    set_about_button_widget(about_btn)
 
-    create_update_banner(games_frame, padx=20, pady=(0, 12))
-    
     # Search and sort controls
     controls_frame = ctk.CTkFrame(games_frame, fg_color="transparent")
     controls_frame.pack(fill="x", pady=(0, 10), padx=20)
@@ -1353,6 +1410,7 @@ def start_review(game_name):
 
     about_btn = ctk.CTkButton(top_frame, text="About", command=show_about_dialog, width=80, height=30, fg_color="#2f556f")
     about_btn.pack(side="right")
+    set_about_button_widget(about_btn)
     
     title = ctk.CTkLabel(top_frame, text=f"Reviewing: {game_name}", font=("Arial", 18, "bold"), text_color=STEAM_ACCENT)
     title.pack(side="left", padx=20)
@@ -1363,8 +1421,6 @@ def start_review(game_name):
     stats_label = ctk.CTkLabel(header_frame, text=stats_text, font=("Arial", 11), text_color="#888")
     stats_label.pack(anchor="w", padx=15, pady=(0, 10))
 
-    create_update_banner(main_frame, padx=20, pady=(0, 8))
-    
     # Review container
     container = ctk.CTkFrame(main_frame, fg_color="transparent")
     container.pack(fill="both", expand=True, padx=20, pady=(0, 20))
