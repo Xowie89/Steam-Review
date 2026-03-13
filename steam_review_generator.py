@@ -23,9 +23,18 @@ ctk.set_appearance_mode("dark")
 STEAM_BG = "#1b2838"
 STEAM_PANEL = "#16202d"
 STEAM_ACCENT = "#66c0f4"
-WINDOW_WIDTH = 600
-WINDOW_HEIGHT = 800
-LOGIN_WINDOW_HEIGHT = 920
+WINDOW_WIDTH = 760
+WINDOW_HEIGHT = 860
+LOGIN_WINDOW_HEIGHT = 940
+WINDOW_MIN_WIDTH = 520
+WINDOW_MIN_HEIGHT = 560
+WINDOW_SCREEN_PADDING_X = 80
+WINDOW_SCREEN_PADDING_Y = 100
+ABOUT_WINDOW_WIDTH = 460
+ABOUT_WINDOW_HEIGHT = 380
+ABOUT_WINDOW_MIN_WIDTH = 360
+ABOUT_WINDOW_MIN_HEIGHT = 300
+GAME_ROW_HEIGHT = 39
 GITHUB_REPO_URL = "https://github.com/Xowie89/Steam-Review"
 GITHUB_RELEASES_URL = f"{GITHUB_REPO_URL}/releases/latest"
 GITHUB_ISSUES_URL = f"{GITHUB_REPO_URL}/issues"
@@ -121,10 +130,10 @@ category_list = list(categories.keys())
 app = ctk.CTk()
 app.title("Steam Review Generator")
 app.configure(fg_color=STEAM_BG)
-app.resizable(False, False)
+app.resizable(True, True)
 
 main_frame = ctk.CTkFrame(app, fg_color=STEAM_PANEL)
-main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+main_frame.pack(fill="both", expand=True, padx=12, pady=12)
 
 title = ctk.CTkLabel(main_frame, text="", font=("Arial", 24, "bold"), text_color=STEAM_ACCENT)
 
@@ -156,6 +165,7 @@ KEYRING_SERVICE = "SteamReviewGenerator"
 KEYRING_API_KEY_NAME = "steam_api_key"
 CREDENTIALS_FILE = os.path.join(APP_DATA_DIR, "steam_credentials.json")
 CACHE_FILE = os.path.join(APP_DATA_DIR, "games_cache.json")
+UI_STATE_FILE = os.path.join(APP_DATA_DIR, "ui_state.json")
 current_screen = "login"  # "login" or "games"
 steam_username = ""
 login_btn = None
@@ -170,7 +180,10 @@ steam_id_hint_label = None
 search_results_label = None
 no_results_label = None
 sort_mode_var = None
-game_buttons = []
+game_virtual_canvas = None
+game_virtual_data = []
+game_hover_index = -1
+_game_canvas_redraw_after = None
 selected_game_index = -1
 next_btn = None
 prev_btn = None
@@ -191,8 +204,198 @@ update_banner_action_btn = None
 about_action_button = None
 about_update_toast_label = None
 about_update_toast_after_id = None
+window_state_cache = None
+window_state_loaded = False
+main_window_geometry_initialized = False
 
 # ------------------ FUNCTIONS ------------------
+
+def parse_geometry(geometry_text):
+    """Parse a Tk geometry string into numeric parts."""
+    match = re.match(r"^(\d+)x(\d+)\+(-?\d+)\+(-?\d+)$", str(geometry_text or ""))
+    if not match:
+        return None
+    return tuple(int(value) for value in match.groups())
+
+def clamp_window_position(widget, width, height, x_pos, y_pos):
+    """Keep a window fully visible on the current primary display."""
+    max_x = max(widget.winfo_screenwidth() - width, 0)
+    max_y = max(widget.winfo_screenheight() - height, 0)
+    clamped_x = max(0, min(x_pos, max_x))
+    clamped_y = max(0, min(y_pos, max_y))
+    return clamped_x, clamped_y
+
+def load_window_state():
+    """Load persisted main-window geometry from disk once per launch."""
+    global window_state_loaded, window_state_cache
+    if window_state_loaded:
+        return window_state_cache
+
+    window_state_loaded = True
+    try:
+        if os.path.exists(UI_STATE_FILE):
+            with open(UI_STATE_FILE, "r", encoding="utf-8") as state_file:
+                state = json.load(state_file)
+
+            width = int(state.get("width", 0))
+            height = int(state.get("height", 0))
+            x_pos = int(state.get("x", 0))
+            y_pos = int(state.get("y", 0))
+
+            if width > 0 and height > 0:
+                window_state_cache = {
+                    "width": width,
+                    "height": height,
+                    "x": x_pos,
+                    "y": y_pos
+                }
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        window_state_cache = None
+
+    return window_state_cache
+
+def save_window_state():
+    """Persist current main-window geometry for next launch."""
+    global window_state_cache, window_state_loaded
+
+    geometry = parse_geometry(app.geometry())
+    if not geometry:
+        return
+
+    width, height, x_pos, y_pos = geometry
+    try:
+        ensure_app_data_dir()
+        state = {
+            "width": width,
+            "height": height,
+            "x": x_pos,
+            "y": y_pos
+        }
+        with open(UI_STATE_FILE, "w", encoding="utf-8") as state_file:
+            json.dump(state, state_file)
+
+        window_state_cache = state
+        window_state_loaded = True
+    except OSError:
+        pass
+
+def on_app_close():
+    """Persist UI state and close the app."""
+    save_window_state()
+    app.destroy()
+
+def get_screen_constrained_size(preferred_width, preferred_height, min_width, min_height, padding_x=WINDOW_SCREEN_PADDING_X, padding_y=WINDOW_SCREEN_PADDING_Y):
+    """Clamp preferred window size to available screen space."""
+    screen_width = app.winfo_screenwidth()
+    screen_height = app.winfo_screenheight()
+    max_width = max(320, screen_width - padding_x)
+    max_height = max(320, screen_height - padding_y)
+
+    width = min(max(preferred_width, min_width), max_width)
+    height = min(max(preferred_height, min_height), max_height)
+    return int(width), int(height)
+
+def center_window(widget, width, height):
+    """Center a toplevel widget on the active screen."""
+    screen_width = widget.winfo_screenwidth()
+    screen_height = widget.winfo_screenheight()
+    x_pos = max((screen_width - width) // 2, 0)
+    y_pos = max((screen_height - height) // 2, 0)
+    widget.geometry(f"{width}x{height}+{x_pos}+{y_pos}")
+
+def apply_main_window_size(preferred_width, preferred_height):
+    """Apply responsive sizing while restoring saved geometry when available."""
+    global main_window_geometry_initialized
+
+    app.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
+
+    if not main_window_geometry_initialized:
+        saved_state = load_window_state()
+        if saved_state:
+            width, height = get_screen_constrained_size(
+                saved_state.get("width", preferred_width),
+                saved_state.get("height", preferred_height),
+                WINDOW_MIN_WIDTH,
+                WINDOW_MIN_HEIGHT
+            )
+            x_pos, y_pos = clamp_window_position(
+                app,
+                width,
+                height,
+                saved_state.get("x", 0),
+                saved_state.get("y", 0)
+            )
+            app.geometry(f"{width}x{height}+{x_pos}+{y_pos}")
+        else:
+            width, height = get_screen_constrained_size(
+                preferred_width,
+                preferred_height,
+                WINDOW_MIN_WIDTH,
+                WINDOW_MIN_HEIGHT
+            )
+            center_window(app, width, height)
+
+        main_window_geometry_initialized = True
+        return
+
+    current_geometry = parse_geometry(app.geometry())
+    if not current_geometry:
+        return
+
+    current_width, current_height, current_x, current_y = current_geometry
+    width, height = get_screen_constrained_size(
+        current_width,
+        current_height,
+        WINDOW_MIN_WIDTH,
+        WINDOW_MIN_HEIGHT
+    )
+    x_pos, y_pos = clamp_window_position(app, width, height, current_x, current_y)
+    app.geometry(f"{width}x{height}+{x_pos}+{y_pos}")
+
+def apply_dialog_size(dialog, preferred_width, preferred_height):
+    """Apply responsive sizing to dialogs so they stay usable on short screens."""
+    width, height = get_screen_constrained_size(
+        preferred_width,
+        preferred_height,
+        ABOUT_WINDOW_MIN_WIDTH,
+        ABOUT_WINDOW_MIN_HEIGHT,
+        padding_x=120,
+        padding_y=120
+    )
+    dialog.minsize(min(ABOUT_WINDOW_MIN_WIDTH, width), min(ABOUT_WINDOW_MIN_HEIGHT, height))
+    center_window(dialog, width, height)
+
+def bind_responsive_button_grid(parent, buttons, expanded_columns, breakpoint):
+    """Lay out button rows in columns on wide screens and stack on narrow widths."""
+    if not buttons:
+        return
+
+    max_columns = max(1, expanded_columns)
+
+    def apply_layout(event=None):
+        frame_width = parent.winfo_width()
+        compact = frame_width > 0 and frame_width < breakpoint
+        columns = 1 if compact else max_columns
+
+        for col in range(max_columns):
+            parent.grid_columnconfigure(col, weight=0)
+        for col in range(columns):
+            parent.grid_columnconfigure(col, weight=1)
+
+        for idx, button in enumerate(buttons):
+            if not button.winfo_exists():
+                continue
+
+            button.grid_forget()
+            row = idx if compact else idx // max_columns
+            column = 0 if compact else idx % max_columns
+            if compact:
+                button.grid(row=row, column=column, padx=0, pady=(0, 6), sticky="ew")
+            else:
+                button.grid(row=row, column=column, padx=4, pady=4, sticky="ew")
+
+    parent.bind("<Configure>", apply_layout, add="+")
+    app.after(0, apply_layout)
 
 def get_app_version():
     """Resolve app version from EXE metadata or version_info.txt."""
@@ -573,12 +776,12 @@ def show_about_dialog():
     version_value = get_app_version()
     about_dialog = ctk.CTkToplevel(app)
     about_dialog.title("About Steam Review Generator")
-    about_dialog.geometry("440x360")
-    about_dialog.resizable(False, False)
+    about_dialog.resizable(True, True)
     about_dialog.configure(fg_color=STEAM_BG)
     about_dialog.transient(app)
     about_dialog.grab_set()
     about_dialog.protocol("WM_DELETE_WINDOW", close_about_dialog)
+    apply_dialog_size(about_dialog, ABOUT_WINDOW_WIDTH, ABOUT_WINDOW_HEIGHT)
 
     about_frame = ctk.CTkFrame(about_dialog, fg_color=STEAM_PANEL, corner_radius=10)
     about_frame.pack(fill="both", expand=True, padx=18, pady=18)
@@ -611,58 +814,49 @@ def show_about_dialog():
     create_update_banner(about_frame, padx=14, pady=(0, 12))
 
     links_frame = ctk.CTkFrame(about_frame, fg_color="transparent")
-    links_frame.pack(pady=(0, 14))
-
-    top_links_row = ctk.CTkFrame(links_frame, fg_color="transparent")
-    top_links_row.pack(pady=(0, 8))
-
-    bottom_links_row = ctk.CTkFrame(links_frame, fg_color="transparent")
-    bottom_links_row.pack()
+    links_frame.pack(fill="x", padx=8, pady=(0, 14))
 
     release_btn = ctk.CTkButton(
-        top_links_row,
+        links_frame,
         text="Latest Release",
         command=lambda: webbrowser.open(GITHUB_RELEASES_URL),
-        fg_color="#2f556f",
-        width=140
+        fg_color="#2f556f"
     )
-    release_btn.pack(side="left", padx=6)
 
     release_notes_btn = ctk.CTkButton(
-        top_links_row,
+        links_frame,
         text="Release Notes",
         command=lambda: webbrowser.open(GITHUB_RELEASES_URL),
-        fg_color="#2f556f",
-        width=140
+        fg_color="#2f556f"
     )
-    release_notes_btn.pack(side="left", padx=6)
 
     issues_btn = ctk.CTkButton(
-        bottom_links_row,
+        links_frame,
         text="Report Issue",
         command=lambda: webbrowser.open(GITHUB_ISSUES_URL),
-        fg_color="#2f556f",
-        width=140
+        fg_color="#2f556f"
     )
-    issues_btn.pack(side="left", padx=6)
 
     repo_btn = ctk.CTkButton(
-        bottom_links_row,
+        links_frame,
         text="Open GitHub",
         command=lambda: webbrowser.open(GITHUB_REPO_URL),
-        fg_color="#2f556f",
-        width=140
+        fg_color="#2f556f"
     )
-    repo_btn.pack(side="left", padx=6)
+    bind_responsive_button_grid(
+        links_frame,
+        [release_btn, release_notes_btn, issues_btn, repo_btn],
+        expanded_columns=2,
+        breakpoint=420
+    )
 
     close_btn = ctk.CTkButton(
         about_frame,
         text="Close",
         command=close_about_dialog,
-        fg_color=STEAM_ACCENT,
-        width=120
+        fg_color=STEAM_ACCENT
     )
-    close_btn.pack(pady=(8, 16))
+    close_btn.pack(fill="x", padx=20, pady=(8, 16))
 
 def save_credentials(api_key, steam_id):
     """Save Steam ID to disk and API key to secure keyring when available."""
@@ -800,7 +994,7 @@ def set_login_loading(active):
     if not login_progress or not login_progress.winfo_exists():
         return
     if active:
-        login_progress.pack(pady=(0, 15))
+        login_progress.pack(fill="x", pady=(0, 15))
         login_progress.start()
     else:
         login_progress.stop()
@@ -1007,10 +1201,10 @@ def auto_login_worker(api_key, user_steam_id):
         app.after(0, complete_auto_login_error)
 
 def show_login_screen():
-    """Show the login screen"""
+    """Show the login screen."""
     global current_screen
     current_screen = "login"
-    app.geometry(f"{WINDOW_WIDTH}x{LOGIN_WINDOW_HEIGHT}")
+    apply_main_window_size(WINDOW_WIDTH, LOGIN_WINDOW_HEIGHT)
     ensure_auto_update_check()
     
     # Clear current content
@@ -1019,7 +1213,7 @@ def show_login_screen():
     
     # Login screen
     login_frame = ctk.CTkFrame(main_frame, fg_color=STEAM_PANEL)
-    login_frame.pack(fill="both", expand=True, padx=20, pady=20)
+    login_frame.pack(fill="both", expand=True, padx=12, pady=12)
 
     top_actions_frame = ctk.CTkFrame(login_frame, fg_color="transparent")
     top_actions_frame.pack(fill="x", padx=10, pady=(8, 0))
@@ -1028,27 +1222,39 @@ def show_login_screen():
         text="About",
         command=show_about_dialog,
         fg_color="#2f556f",
-        width=80,
+        width=90,
         height=30
     )
     about_btn.pack(side="right")
     set_about_button_widget(about_btn)
+
+    content_frame = ctk.CTkScrollableFrame(login_frame, fg_color="transparent")
+    content_frame.pack(fill="both", expand=True, padx=8, pady=(8, 10))
     
-    login_title = ctk.CTkLabel(login_frame, text="Steam Review Generator", font=("Arial", 28, "bold"), text_color=STEAM_ACCENT)
+    login_title = ctk.CTkLabel(content_frame, text="Steam Review Generator", font=("Arial", 28, "bold"), text_color=STEAM_ACCENT)
     login_title.pack(pady=(30, 10))
     
-    subtitle = ctk.CTkLabel(login_frame, text="Login with your Steam credentials", font=("Arial", 16), text_color="#cccccc")
+    subtitle = ctk.CTkLabel(content_frame, text="Login with your Steam credentials", font=("Arial", 16), text_color="#cccccc")
     subtitle.pack(pady=(0, 30))
 
-    # Instructions (move higher and give more vertical space for readability)
-    instructions_frame = ctk.CTkFrame(login_frame, fg_color=STEAM_BG)
-    instructions_frame.pack(fill="x", padx=20, pady=(0, 14))
+    # Keep instructions and form inside a scrollable body for short screens.
+    instructions_frame = ctk.CTkFrame(content_frame, fg_color=STEAM_BG)
+    instructions_frame.pack(fill="x", padx=16, pady=(0, 14))
 
     instructions_title = ctk.CTkLabel(instructions_frame, text="How to get your credentials:", font=("Arial", 14, "bold"), text_color=STEAM_ACCENT)
     instructions_title.pack(pady=(15, 10))
 
-    instructions_text = tk.Text(instructions_frame, height=10, width=50, bg=STEAM_BG, fg="#cccccc", font=("Arial", 11), wrap="word", borderwidth=0, highlightthickness=0)
-    instructions_text.pack(pady=(0, 15))
+    instructions_text = tk.Text(
+        instructions_frame,
+        height=8,
+        bg=STEAM_BG,
+        fg="#cccccc",
+        font=("Arial", 11),
+        wrap="word",
+        borderwidth=0,
+        highlightthickness=0
+    )
+    instructions_text.pack(fill="x", padx=12, pady=(0, 15))
 
     # Insert text with clickable links
     instructions_text.insert("1.0", "1. Visit ")
@@ -1066,45 +1272,48 @@ def show_login_screen():
     instructions_text.tag_bind("link2", "<Button-1>", lambda e: webbrowser.open("https://steamid.io/"))
 
     # Make text read-only
-    instructions_text.config(state="disabled")
+    instructions_text.config(state="disabled", cursor="arrow")
+
+    form_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+    form_frame.pack(fill="x", padx=18, pady=(0, 10))
     
     # API Key input
-    api_key_label = ctk.CTkLabel(login_frame, text="Steam API Key:", font=("Arial", 14))
-    api_key_label.pack(pady=(12, 5))
+    api_key_label = ctk.CTkLabel(form_frame, text="Steam API Key:", font=("Arial", 14))
+    api_key_label.pack(anchor="w", pady=(12, 5))
     global steam_api_key_entry
-    steam_api_key_entry = ctk.CTkEntry(login_frame, width=400, placeholder_text="Enter your Steam API key...")
-    steam_api_key_entry.pack(pady=(0, 10))
+    steam_api_key_entry = ctk.CTkEntry(form_frame, placeholder_text="Enter your Steam API key...")
+    steam_api_key_entry.pack(fill="x", pady=(0, 10))
     steam_api_key_entry.bind("<KeyRelease>", on_login_input_change)
 
     global api_key_hint_label
-    api_key_hint_label = ctk.CTkLabel(login_frame, text="", font=("Arial", 11), text_color="#888")
-    api_key_hint_label.pack(pady=(0, 8))
+    api_key_hint_label = ctk.CTkLabel(form_frame, text="", font=("Arial", 11), text_color="#888")
+    api_key_hint_label.pack(anchor="w", pady=(0, 8))
     
     # Steam ID input
-    steam_id_label = ctk.CTkLabel(login_frame, text="Steam ID (64-bit):", font=("Arial", 14))
-    steam_id_label.pack(pady=(8, 5))
+    steam_id_label = ctk.CTkLabel(form_frame, text="Steam ID (64-bit):", font=("Arial", 14))
+    steam_id_label.pack(anchor="w", pady=(8, 5))
     global steam_id_entry
-    steam_id_entry = ctk.CTkEntry(login_frame, width=400, placeholder_text="Enter your 64-bit Steam ID...")
-    steam_id_entry.pack(pady=(0, 20))
+    steam_id_entry = ctk.CTkEntry(form_frame, placeholder_text="Enter your 64-bit Steam ID...")
+    steam_id_entry.pack(fill="x", pady=(0, 20))
     steam_id_entry.bind("<KeyRelease>", on_login_input_change)
 
     global steam_id_hint_label
-    steam_id_hint_label = ctk.CTkLabel(login_frame, text="", font=("Arial", 11), text_color="#888")
-    steam_id_hint_label.pack(pady=(0, 12))
+    steam_id_hint_label = ctk.CTkLabel(form_frame, text="", font=("Arial", 11), text_color="#888")
+    steam_id_hint_label.pack(anchor="w", pady=(0, 12))
     
     # Login button
     global login_btn
-    login_btn = ctk.CTkButton(login_frame, text="Login & Fetch Games", command=login_and_fetch, fg_color=STEAM_ACCENT, height=40)
-    login_btn.pack(pady=(10, 12))
+    login_btn = ctk.CTkButton(form_frame, text="Login & Fetch Games", command=login_and_fetch, fg_color=STEAM_ACCENT, height=40)
+    login_btn.pack(fill="x", pady=(10, 12))
     
     # Status label
     global status_label
-    status_label = ctk.CTkLabel(login_frame, text="", font=("Arial", 12))
-    status_label.pack(pady=(0, 8))
+    status_label = ctk.CTkLabel(form_frame, text="", font=("Arial", 12))
+    status_label.pack(anchor="w", pady=(0, 8))
 
     # Login progress indicator (shown only during background fetch)
     global login_progress
-    login_progress = ctk.CTkProgressBar(login_frame, width=300, mode="indeterminate")
+    login_progress = ctk.CTkProgressBar(form_frame, mode="indeterminate")
     
     # Load saved credentials
     saved_api_key, saved_steam_id = load_credentials()
@@ -1117,10 +1326,10 @@ def show_login_screen():
     add_version_footer(login_frame)
 
 def show_games_screen():
-    """Show the games selection screen"""
+    """Show the games selection screen."""
     global current_screen, preview, rating_frame, sort_mode_var, selected_game_index
     current_screen = "games"
-    app.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+    apply_main_window_size(WINDOW_WIDTH, WINDOW_HEIGHT)
     selected_game_index = -1
     ensure_auto_update_check()
     
@@ -1147,7 +1356,7 @@ def show_games_screen():
     app.update()    
     # Games screen
     games_frame = ctk.CTkFrame(main_frame, fg_color=STEAM_PANEL)
-    games_frame.pack(fill="both", expand=True, padx=20, pady=20)
+    games_frame.pack(fill="both", expand=True, padx=12, pady=12)
     
     # Title at top
     games_title = ctk.CTkLabel(games_frame, text="Select a Game to Review", font=("Arial", 24, "bold"), text_color=STEAM_ACCENT)
@@ -1156,24 +1365,27 @@ def show_games_screen():
     # Header with username and logout
     header_frame = ctk.CTkFrame(games_frame, fg_color="transparent")
     header_frame.pack(fill="x", pady=(0, 15), padx=20)
-    
-    username_label = ctk.CTkLabel(header_frame, text=f"Logged in as: {steam_username}", font=("Arial", 12), text_color="#cccccc")
-    username_label.pack(side="left")
-    
-    logout_btn = ctk.CTkButton(header_frame, text="Logout", command=logout, fg_color="#ff5555", width=80, height=30)
+
+    header_actions = ctk.CTkFrame(header_frame, fg_color="transparent")
+    header_actions.pack(side="right")
+
+    logout_btn = ctk.CTkButton(header_actions, text="Logout", command=logout, fg_color="#ff5555", width=80, height=30)
     logout_btn.pack(side="right")
 
-    about_btn = ctk.CTkButton(header_frame, text="About", command=show_about_dialog, fg_color="#2f556f", width=80, height=30)
+    about_btn = ctk.CTkButton(header_actions, text="About", command=show_about_dialog, fg_color="#2f556f", width=80, height=30)
     about_btn.pack(side="right", padx=(0, 8))
     set_about_button_widget(about_btn)
+    
+    username_label = ctk.CTkLabel(header_frame, text=f"Logged in as: {steam_username}", font=("Arial", 12), text_color="#cccccc")
+    username_label.pack(side="left", fill="x", expand=True, padx=(0, 12), anchor="w")
 
     # Search and sort controls
     controls_frame = ctk.CTkFrame(games_frame, fg_color="transparent")
     controls_frame.pack(fill="x", pady=(0, 10), padx=20)
 
     global search_entry
-    search_entry = ctk.CTkEntry(controls_frame, width=360, placeholder_text="Type to search games...")
-    search_entry.pack(side="left")
+    search_entry = ctk.CTkEntry(controls_frame, placeholder_text="Type to search games...")
+    search_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
     search_entry.bind("<KeyRelease>", filter_games)
     search_entry.bind("<Down>", on_search_down)
     search_entry.bind("<Up>", on_search_up)
@@ -1213,10 +1425,73 @@ def show_games_screen():
     )
     stats_text.pack(anchor="w")
     
-    # Scrollable game list
-    global game_scroll_frame
-    game_scroll_frame = ctk.CTkScrollableFrame(games_frame, width=560, height=380)
-    game_scroll_frame.pack(pady=(0, 20), padx=20, fill="both", expand=True)
+    # Canvas-based virtual game list — only visible rows are drawn, no per-row widgets
+    global game_virtual_canvas, game_hover_index
+    game_hover_index = -1
+    _list_wrapper = tk.Frame(games_frame, bg=STEAM_PANEL)
+    _list_wrapper.pack(pady=(0, 20), padx=(20, 0), fill="both", expand=True)
+
+    _game_vscrollbar = ctk.CTkScrollbar(_list_wrapper, command=_on_game_scrollbar_cmd)
+    _game_vscrollbar.pack(side="right", fill="y", padx=(0, 4))
+
+    game_virtual_canvas = tk.Canvas(_list_wrapper, bg=STEAM_PANEL, highlightthickness=0, cursor="hand2", takefocus=1)
+    game_virtual_canvas.configure(yscrollcommand=_game_vscrollbar.set)
+    game_virtual_canvas.pack(side="left", fill="both", expand=True)
+
+    game_virtual_canvas.bind("<Configure>", on_game_canvas_configure)
+    game_virtual_canvas.bind("<MouseWheel>", on_game_canvas_scroll)
+    game_virtual_canvas.bind("<Button-4>", on_game_canvas_scroll)
+    game_virtual_canvas.bind("<Button-5>", on_game_canvas_scroll)
+    game_virtual_canvas.bind("<Motion>", on_game_canvas_motion)
+    game_virtual_canvas.bind("<Leave>", on_game_canvas_leave)
+    game_virtual_canvas.bind("<Button-1>", on_game_canvas_click)
+
+    # App-level bindings so Up/Down/Return work regardless of which widget is focused.
+    def _guard_down(e):
+        if current_screen == "games":
+            return on_search_down(e)
+    def _guard_up(e):
+        if current_screen == "games":
+            return on_search_up(e)
+    def _guard_enter(e):
+        if current_screen == "games":
+            return on_search_enter(e)
+
+    def _is_descendant_widget(widget, ancestor):
+        """Return True if widget is ancestor or a descendant of ancestor."""
+        while widget:
+            if widget == ancestor:
+                return True
+            try:
+                parent_name = widget.winfo_parent()
+            except Exception:
+                return False
+            if not parent_name:
+                return False
+            try:
+                widget = widget.nametowidget(parent_name)
+            except Exception:
+                return False
+        return False
+
+    def _defocus_search_entry(e):
+        """Move focus away from search entry when clicking elsewhere on games screen."""
+        if current_screen != "games":
+            return
+        if search_entry and search_entry.winfo_exists() and _is_descendant_widget(e.widget, search_entry):
+            return
+        if game_virtual_canvas and game_virtual_canvas.winfo_exists():
+            game_virtual_canvas.focus_set()
+        else:
+            app.focus_set()
+
+    app.bind_all("<Down>", _guard_down, add="+")
+    app.bind_all("<Up>", _guard_up, add="+")
+    app.bind_all("<Return>", _guard_enter, add="+")
+    app.bind_all("<Button-1>", _defocus_search_entry, add="+")
+
+    # Clicking anywhere on the list wrapper (between rows, scrollbar area) defocuses the search entry.
+    _list_wrapper.bind("<Button-1>", lambda e: game_virtual_canvas.focus_set(), add="+")
 
     global no_results_label
     no_results_label = ctk.CTkLabel(games_frame, text="No matching games found.", font=("Arial", 12), text_color="#ff9f7a")
@@ -1234,13 +1509,124 @@ def get_sorted_games(sort_mode):
         return sorted(owned_games, key=lambda g: g.get('playtime_forever', 0))
     return sorted(owned_games, key=lambda g: g.get('name', '').lower())
 
-def update_selected_game_highlight():
-    """Highlight currently selected visible game for keyboard navigation."""
-    for idx, (button, _) in enumerate(game_buttons):
-        if idx == selected_game_index:
-            button.configure(fg_color="#264c66", text_color="#f2f8fc")
+def _game_canvas_index_at(canvas_y):
+    """Convert a canvas-relative y coordinate to a game_virtual_data index."""
+    if not game_virtual_data or not game_virtual_canvas or not game_virtual_canvas.winfo_exists():
+        return -1
+    total_height = len(game_virtual_data) * GAME_ROW_HEIGHT
+    yview = game_virtual_canvas.yview()
+    y_abs = yview[0] * total_height + canvas_y
+    idx = int(y_abs / GAME_ROW_HEIGHT)
+    return idx if 0 <= idx < len(game_virtual_data) else -1
+
+def draw_game_canvas_rows():
+    """Redraw only the rows currently visible in the game canvas viewport."""
+    global _game_canvas_redraw_after
+    _game_canvas_redraw_after = None
+    if not game_virtual_canvas or not game_virtual_canvas.winfo_exists():
+        return
+
+    canvas_width = game_virtual_canvas.winfo_width()
+    canvas_height = game_virtual_canvas.winfo_height()
+    if canvas_width <= 1 or canvas_height <= 1:
+        return
+
+    game_virtual_canvas.delete("all")
+
+    total_items = len(game_virtual_data)
+    if total_items == 0:
+        return
+
+    total_height = total_items * GAME_ROW_HEIGHT
+    game_virtual_canvas.configure(scrollregion=(0, 0, canvas_width, total_height))
+
+    yview = game_virtual_canvas.yview()
+    y_abs_top = yview[0] * total_height
+    y_abs_bottom = min(yview[1] * total_height, total_height)
+
+    first_idx = max(0, int(y_abs_top / GAME_ROW_HEIGHT) - 1)
+    last_idx = min(total_items, int(y_abs_bottom / GAME_ROW_HEIGHT) + 2)
+
+    for i in range(first_idx, last_idx):
+        y_top = i * GAME_ROW_HEIGHT + 2
+        y_bot = (i + 1) * GAME_ROW_HEIGHT - 2
+        y_mid = i * GAME_ROW_HEIGHT + GAME_ROW_HEIGHT // 2
+
+        if i == selected_game_index:
+            bg, fg = "#264c66", "#f2f8fc"
+        elif i == game_hover_index:
+            bg, fg = "#1d4a6b", "#f2f8fc"
         else:
-            button.configure(fg_color=STEAM_PANEL, text_color="#cccccc")
+            bg, fg = STEAM_PANEL, "#cccccc"
+
+        game_virtual_canvas.create_rectangle(
+            5, y_top, canvas_width - 5, y_bot,
+            fill=bg, outline=""
+        )
+        game_virtual_canvas.create_text(
+            16, y_mid,
+            text=game_virtual_data[i],
+            fill=fg,
+            font=("Arial", 11),
+            anchor="w"
+        )
+
+def on_game_canvas_configure(event):
+    """Update scrollregion on canvas resize and schedule a redraw."""
+    global _game_canvas_redraw_after
+    total_height = len(game_virtual_data) * GAME_ROW_HEIGHT
+    game_virtual_canvas.configure(
+        scrollregion=(0, 0, event.width, max(total_height, event.height))
+    )
+    if _game_canvas_redraw_after:
+        app.after_cancel(_game_canvas_redraw_after)
+    _game_canvas_redraw_after = app.after(30, draw_game_canvas_rows)
+
+def _on_game_scrollbar_cmd(*args):
+    """Route scrollbar drag to canvas and redraw visible rows."""
+    if game_virtual_canvas and game_virtual_canvas.winfo_exists():
+        game_virtual_canvas.yview(*args)
+        draw_game_canvas_rows()
+
+def on_game_canvas_scroll(event):
+    """Handle mouse-wheel scrolling on the game canvas."""
+    if not game_virtual_canvas or not game_virtual_canvas.winfo_exists():
+        return
+    if event.delta:
+        game_virtual_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    elif event.num == 4:
+        game_virtual_canvas.yview_scroll(-3, "units")
+    elif event.num == 5:
+        game_virtual_canvas.yview_scroll(3, "units")
+    draw_game_canvas_rows()
+
+def on_game_canvas_motion(event):
+    """Update hover highlight as the mouse moves across game rows."""
+    global game_hover_index
+    idx = _game_canvas_index_at(event.y)
+    if idx != game_hover_index:
+        game_hover_index = idx
+        draw_game_canvas_rows()
+
+def on_game_canvas_leave(event):
+    """Clear hover highlight when the mouse exits the canvas."""
+    global game_hover_index
+    if game_hover_index != -1:
+        game_hover_index = -1
+        draw_game_canvas_rows()
+
+def on_game_canvas_click(event):
+    """Start a review for the clicked game row."""
+    idx = _game_canvas_index_at(event.y)
+    if game_virtual_canvas and game_virtual_canvas.winfo_exists():
+        game_virtual_canvas.focus_set()
+    if 0 <= idx < len(game_virtual_data):
+        start_review(game_virtual_data[idx])
+
+def update_selected_game_highlight():
+    """Redraw game canvas to reflect the current keyboard selection."""
+    if game_virtual_canvas and game_virtual_canvas.winfo_exists():
+        draw_game_canvas_rows()
 
 def on_sort_change(choice):
     """Refresh game list after changing sort mode."""
@@ -1250,21 +1636,39 @@ def on_sort_change(choice):
 def move_game_selection(step):
     """Move keyboard selection up/down within visible games."""
     global selected_game_index
-    if not game_buttons:
+    if not game_virtual_data:
         selected_game_index = -1
         return
 
     if selected_game_index < 0:
-        selected_game_index = 0 if step >= 0 else len(game_buttons) - 1
+        selected_game_index = 0 if step >= 0 else len(game_virtual_data) - 1
     else:
-        selected_game_index = max(0, min(len(game_buttons) - 1, selected_game_index + step))
+        selected_game_index = max(0, min(len(game_virtual_data) - 1, selected_game_index + step))
 
     update_selected_game_highlight()
 
-    # Keep selection in view in a lightweight way for large lists.
-    if len(game_buttons) > 1:
-        scroll_fraction = selected_game_index / max(len(game_buttons) - 1, 1)
-        game_scroll_frame._parent_canvas.yview_moveto(scroll_fraction)
+    if game_virtual_canvas and game_virtual_canvas.winfo_exists():
+        total_height = len(game_virtual_data) * GAME_ROW_HEIGHT
+        canvas_height = game_virtual_canvas.winfo_height()
+
+        if total_height > canvas_height:
+            yview = game_virtual_canvas.yview()
+            view_top = yview[0] * total_height
+            view_bottom = yview[1] * total_height
+
+            row_top = selected_game_index * GAME_ROW_HEIGHT
+            row_bottom = row_top + GAME_ROW_HEIGHT
+
+            if row_top < view_top:
+                # Row scrolled above viewport — bring it to the top edge
+                new_fraction = row_top / total_height
+                game_virtual_canvas.yview_moveto(max(0.0, new_fraction))
+            elif row_bottom > view_bottom:
+                # Row scrolled below viewport — bring it to the bottom edge
+                new_fraction = (row_bottom - canvas_height) / total_height
+                game_virtual_canvas.yview_moveto(max(0.0, min(1.0, new_fraction)))
+
+        draw_game_canvas_rows()
 
 def on_search_down(event):
     """Select next visible game with Down key."""
@@ -1278,55 +1682,38 @@ def on_search_up(event):
 
 def on_search_enter(event):
     """Open selected game with Enter from search box."""
-    if not game_buttons:
+    if not game_virtual_data:
         return "break"
 
     index = selected_game_index if selected_game_index >= 0 else 0
-    _, game_name = game_buttons[index]
-    start_review(game_name)
+    if 0 <= index < len(game_virtual_data):
+        start_review(game_virtual_data[index])
     return "break"
 
 def populate_game_list(search_filter=""):
-    """Populate the game list, showing/hiding based on search"""
-    global game_buttons, selected_game_index
-
-    for widget in game_scroll_frame.winfo_children():
-        widget.destroy()
-    game_buttons = []
+    """Populate the virtual game canvas with the filtered and sorted game list."""
+    global game_virtual_data, selected_game_index, game_hover_index
 
     sort_mode = sort_mode_var.get() if sort_mode_var else "A-Z"
     sorted_games = get_sorted_games(sort_mode)
 
-    # Reset scroll position to top when filtering
-    if search_filter:
-        game_scroll_frame._parent_canvas.yview_moveto(0)
-    
-    # Build buttons for current filter/sort result
     search_lower = search_filter.lower()
+    game_virtual_data = [
+        g.get('name', '')
+        for g in sorted_games
+        if not search_filter or search_lower in g.get('name', '').lower()
+    ]
 
-    for game in sorted_games:
-        game_name = game.get('name', '')
-        if search_filter and search_lower not in game_name.lower():
-            continue
-
-        game_btn = ctk.CTkButton(
-            game_scroll_frame,
-            text=game_name,
-            command=lambda name=game_name: start_review(name),
-            fg_color=STEAM_PANEL,
-            text_color="#cccccc",
-            hover_color="#66c0f4",
-            anchor="w",
-            height=35
-        )
-        game_btn.pack(fill="x", padx=5, pady=2)
-        game_buttons.append((game_btn, game_name))
-
-    shown_count = len(game_buttons)
+    shown_count = len(game_virtual_data)
     total_count = len(sorted_games)
 
     selected_game_index = 0 if shown_count > 0 else -1
-    update_selected_game_highlight()
+    game_hover_index = -1
+
+    if game_virtual_canvas and game_virtual_canvas.winfo_exists():
+        if search_filter:
+            game_virtual_canvas.yview_moveto(0)
+        draw_game_canvas_rows()
 
     if search_results_label and search_results_label.winfo_exists():
         if search_filter:
@@ -1401,9 +1788,9 @@ def start_review(game_name):
     header_frame = ctk.CTkFrame(main_frame, fg_color=STEAM_PANEL)
     header_frame.pack(fill="x", padx=20, pady=15)
     
-    # Game title and back button
+    # Game actions row
     top_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-    top_frame.pack(fill="x", padx=15, pady=(10, 5))
+    top_frame.pack(fill="x", padx=15, pady=(10, 6))
     
     back_btn = ctk.CTkButton(top_frame, text="← Back", command=show_games_screen, width=80, height=30, fg_color="#666", hover_color="#888")
     back_btn.pack(side="left")
@@ -1412,8 +1799,15 @@ def start_review(game_name):
     about_btn.pack(side="right")
     set_about_button_widget(about_btn)
     
-    title = ctk.CTkLabel(top_frame, text=f"Reviewing: {game_name}", font=("Arial", 18, "bold"), text_color=STEAM_ACCENT)
-    title.pack(side="left", padx=20)
+    title = ctk.CTkLabel(
+        header_frame,
+        text=f"Reviewing: {game_name}",
+        font=("Arial", 18, "bold"),
+        text_color=STEAM_ACCENT,
+        anchor="w",
+        justify="left"
+    )
+    title.pack(fill="x", padx=15, pady=(0, 4))
     
     # Game stats
     hours = game_playtime // 60
@@ -1466,14 +1860,15 @@ def show_game_summary():
         f"Game: {game_name}\n"
         f"AppID: {game_appid}\n"
         f"Playtime: {playtime_hours}h ({playtime_minutes} minutes)\n\n"
-        "You will rate 6 categories. You can move forward and backward\n"
-        "before generating the final review."
+        "You will rate 6 categories. You can move forward and backward before generating the final review."
     )
     details_label = ctk.CTkLabel(
         summary_frame,
         text=details_text,
         font=("Arial", 12),
         justify="left",
+        anchor="w",
+        wraplength=620,
         text_color="#d2dbe2"
     )
     details_label.pack(pady=(0, 26), padx=22, anchor="w")
@@ -1486,19 +1881,21 @@ def show_game_summary():
         text="Choose Another Game",
         command=show_games_screen,
         fg_color="#555",
-        hover_color="#666",
-        width=170
+        hover_color="#666"
     )
-    back_btn.pack(side="left")
 
     begin_btn = ctk.CTkButton(
         actions_frame,
         text="Start Rating",
         command=show_category,
-        fg_color=STEAM_ACCENT,
-        width=140
+        fg_color=STEAM_ACCENT
     )
-    begin_btn.pack(side="right")
+    bind_responsive_button_grid(
+        actions_frame,
+        [back_btn, begin_btn],
+        expanded_columns=2,
+        breakpoint=560
+    )
 
 def animate_rating_bar(score):
     """Fill the rating bar one by one with animation"""
@@ -1601,8 +1998,11 @@ def show_category():
     nav_frame = ctk.CTkFrame(container, fg_color="transparent")
     nav_frame.pack(fill="x", pady=(8, 0))
 
+    nav_buttons_row = ctk.CTkFrame(nav_frame, fg_color="transparent")
+    nav_buttons_row.pack(fill="x")
+
     prev_btn = ctk.CTkButton(
-        nav_frame,
+        nav_buttons_row,
         text="Previous",
         command=go_previous_category,
         fg_color="#555",
@@ -1613,7 +2013,7 @@ def show_category():
 
     next_label = "Generate Review" if current_index == len(category_list) - 1 else "Next"
     next_btn = ctk.CTkButton(
-        nav_frame,
+        nav_buttons_row,
         text=next_label,
         command=go_next_category,
         fg_color=STEAM_ACCENT,
@@ -1622,7 +2022,7 @@ def show_category():
     next_btn.pack(side="right")
 
     nav_hint_label = ctk.CTkLabel(nav_frame, text="", font=("Arial", 11), text_color="#ff9999")
-    nav_hint_label.pack(side="right", padx=(0, 12))
+    nav_hint_label.pack(anchor="w", pady=(6, 0))
 
     update_nav_state()
 
@@ -1757,7 +2157,7 @@ def generate_review():
     preview_frame = ctk.CTkFrame(container, fg_color=STEAM_PANEL, corner_radius=8)
     preview_frame.pack(fill="both", expand=True, padx=10, pady=10)
     
-    preview = ctk.CTkTextbox(preview_frame, height=350, width=500)
+    preview = ctk.CTkTextbox(preview_frame)
     preview.pack(fill="both", expand=True, padx=15, pady=15)
     preview.insert("0.0", review_text)
     preview.configure(state="disabled")  # Make read-only
@@ -1786,29 +2186,29 @@ def generate_review():
         primary_actions_row,
         text="Start New Review",
         command=start_new_review,
-        fg_color=STEAM_ACCENT,
-        width=140
+        fg_color=STEAM_ACCENT
     )
-    new_review_btn.pack(side="left")
 
     edit_ratings_btn = ctk.CTkButton(
         primary_actions_row,
         text="Edit Ratings",
         command=edit_ratings_from_result,
         fg_color="#4f6a2a",
-        hover_color="#5f7c32",
-        width=120
+        hover_color="#5f7c32"
     )
-    edit_ratings_btn.pack(side="left", padx=(8, 0))
 
     copy_again_btn = ctk.CTkButton(
         primary_actions_row,
         text="Copy Again",
         command=copy_review_again,
-        fg_color="#2f556f",
-        width=110
+        fg_color="#2f556f"
     )
-    copy_again_btn.pack(side="left", padx=(8, 0))
+    bind_responsive_button_grid(
+        primary_actions_row,
+        [new_review_btn, edit_ratings_btn, copy_again_btn],
+        expanded_columns=3,
+        breakpoint=700
+    )
 
     secondary_actions_row = ctk.CTkFrame(buttons_frame, fg_color="transparent")
     secondary_actions_row.pack(fill="x")
@@ -1817,19 +2217,21 @@ def generate_review():
         secondary_actions_row,
         text="Save .txt",
         command=lambda: save_review_to_file(".txt"),
-        fg_color="#2f556f",
-        width=95
+        fg_color="#2f556f"
     )
-    save_txt_btn.pack(side="left")
 
     save_md_btn = ctk.CTkButton(
         secondary_actions_row,
         text="Save .md",
         command=lambda: save_review_to_file(".md"),
-        fg_color="#2f556f",
-        width=95
+        fg_color="#2f556f"
     )
-    save_md_btn.pack(side="left", padx=(8, 0))
+    bind_responsive_button_grid(
+        secondary_actions_row,
+        [save_txt_btn, save_md_btn],
+        expanded_columns=2,
+        breakpoint=560
+    )
 
 def start_new_review():
     global current_index, vars_dict, selected_game, preview, current_game_data, rating_frame, latest_review_text, save_status_label
@@ -1856,6 +2258,8 @@ def start_new_review():
     
     # Go back to games screen
     show_games_screen()
+
+app.protocol("WM_DELETE_WINDOW", on_app_close)
     
 # ------------------ START ------------------
 # Check if user is already logged in
@@ -1866,8 +2270,8 @@ if saved_api_key and saved_steam_id:
     # Show loading screen briefly
     startup_loading_label = ctk.CTkLabel(main_frame, text="Loading your games...", font=("Arial", 16), text_color=STEAM_ACCENT)
     startup_loading_label.pack(expand=True)
-    startup_progress = ctk.CTkProgressBar(main_frame, width=280, mode="indeterminate")
-    startup_progress.pack(pady=(0, 40))
+    startup_progress = ctk.CTkProgressBar(main_frame, mode="indeterminate")
+    startup_progress.pack(fill="x", padx=60, pady=(0, 40))
     startup_progress.start()
     app.update()
     threading.Thread(target=auto_login_worker, args=(saved_api_key, saved_steam_id), daemon=True).start()
@@ -1877,8 +2281,8 @@ else:
 
 # Set initial window size based on the active startup screen.
 if current_screen == "login":
-    app.geometry(f"{WINDOW_WIDTH}x{LOGIN_WINDOW_HEIGHT}")
+    apply_main_window_size(WINDOW_WIDTH, LOGIN_WINDOW_HEIGHT)
 else:
-    app.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+    apply_main_window_size(WINDOW_WIDTH, WINDOW_HEIGHT)
 
 app.mainloop()
