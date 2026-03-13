@@ -10,6 +10,13 @@ Desktop.ini
 *.swo
 
 # ------------------------------
+# Copilot local customizations
+# ------------------------------
+.github/copilot-instructions.md
+.github/prompts/
+.github/instructions/
+
+# ------------------------------
 # Python cache and test output
 # ------------------------------
 __pycache__/
