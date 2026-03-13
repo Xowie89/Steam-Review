@@ -1709,56 +1709,71 @@ def generate_review():
     # Copy to clipboard
     pyperclip.copy(review_text)
     
-    # Create buttons frame
+    # Create footer frame with separate rows so action buttons are never clipped.
     buttons_frame = ctk.CTkFrame(preview_frame, fg_color="transparent")
     buttons_frame.pack(fill="x", padx=15, pady=(0, 15))
-    
-    copy_label = ctk.CTkLabel(buttons_frame, text="✓ Review copied to clipboard!", font=("Arial", 10), text_color="#00ff00")
+
+    status_row = ctk.CTkFrame(buttons_frame, fg_color="transparent")
+    status_row.pack(fill="x", pady=(0, 8))
+
+    copy_label = ctk.CTkLabel(status_row, text="✓ Review copied to clipboard!", font=("Arial", 10), text_color="#00ff00")
     copy_label.pack(side="left", padx=10)
 
-    save_status_label = ctk.CTkLabel(buttons_frame, text="", font=("Arial", 10), text_color="#9fb6c4")
+    save_status_label = ctk.CTkLabel(status_row, text="", font=("Arial", 10), text_color="#9fb6c4")
     save_status_label.pack(side="left", padx=(8, 0))
 
+    primary_actions_row = ctk.CTkFrame(buttons_frame, fg_color="transparent")
+    primary_actions_row.pack(fill="x", pady=(0, 8))
+
+    # Add "New Review" button
+    new_review_btn = ctk.CTkButton(
+        primary_actions_row,
+        text="Start New Review",
+        command=start_new_review,
+        fg_color=STEAM_ACCENT,
+        width=140
+    )
+    new_review_btn.pack(side="left")
+
+    edit_ratings_btn = ctk.CTkButton(
+        primary_actions_row,
+        text="Edit Ratings",
+        command=edit_ratings_from_result,
+        fg_color="#4f6a2a",
+        hover_color="#5f7c32",
+        width=120
+    )
+    edit_ratings_btn.pack(side="left", padx=(8, 0))
+
+    copy_again_btn = ctk.CTkButton(
+        primary_actions_row,
+        text="Copy Again",
+        command=copy_review_again,
+        fg_color="#2f556f",
+        width=110
+    )
+    copy_again_btn.pack(side="left", padx=(8, 0))
+
+    secondary_actions_row = ctk.CTkFrame(buttons_frame, fg_color="transparent")
+    secondary_actions_row.pack(fill="x")
+
     save_txt_btn = ctk.CTkButton(
-        buttons_frame,
+        secondary_actions_row,
         text="Save .txt",
         command=lambda: save_review_to_file(".txt"),
         fg_color="#2f556f",
         width=95
     )
-    save_txt_btn.pack(side="right", padx=(8, 0))
+    save_txt_btn.pack(side="left")
 
     save_md_btn = ctk.CTkButton(
-        buttons_frame,
+        secondary_actions_row,
         text="Save .md",
         command=lambda: save_review_to_file(".md"),
         fg_color="#2f556f",
         width=95
     )
-    save_md_btn.pack(side="right", padx=(8, 0))
-
-    copy_again_btn = ctk.CTkButton(
-        buttons_frame,
-        text="Copy Again",
-        command=copy_review_again,
-        fg_color="#2f556f",
-        width=105
-    )
-    copy_again_btn.pack(side="right", padx=(8, 0))
-
-    edit_ratings_btn = ctk.CTkButton(
-        buttons_frame,
-        text="Edit Ratings",
-        command=edit_ratings_from_result,
-        fg_color="#4f6a2a",
-        hover_color="#5f7c32",
-        width=110
-    )
-    edit_ratings_btn.pack(side="right", padx=(8, 0))
-    
-    # Add "New Review" button
-    new_review_btn = ctk.CTkButton(buttons_frame, text="Start New Review", command=start_new_review, fg_color=STEAM_ACCENT, width=150)
-    new_review_btn.pack(side="right")
+    save_md_btn.pack(side="left", padx=(8, 0))
 
 def start_new_review():
     global current_index, vars_dict, selected_game, preview, current_game_data, rating_frame, latest_review_text, save_status_label

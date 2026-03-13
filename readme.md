@@ -25,7 +25,7 @@ The app automatically calculates a final score using weighted categories, shows 
 - Automatically copies the completed review to clipboard
 - Copy the review again with one click from the result screen
 - Save generated reviews as **.txt** or **.md**
-- Edit category ratings from the result screen without restarting
+- Use **Edit Ratings** on the result screen to adjust category scores without restarting
 - In-app **About** dialog with version, latest release/release notes, and issue links
 - Automatic update checker banner with one-click download when updates are available
 - Visible in-app version footer on main screens (matches packaged EXE version)
