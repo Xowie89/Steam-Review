@@ -28,7 +28,7 @@ The app automatically calculates a final score using weighted categories, shows 
 - Edit category ratings from the result screen without restarting
 - In-app **About** dialog with version, latest release/release notes, and issue links
 - Automatic update checker banner with one-click download when updates are available
-- Visible in-app version footer on main screens
+- Visible in-app version footer on main screens (matches packaged EXE version)
 - Saves credentials locally for quick relogin
 - Caches your game list for faster loading
 
