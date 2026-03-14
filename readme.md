@@ -6,92 +6,79 @@
 
 [![Download](https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github)](https://github.com/Xowie89/Steam-Review/releases/latest)
 
-A Steam-styled desktop app built with **CustomTkinter** that lets you log in with your Steam API credentials, load your game library, select a game, and generate a formatted review based on category ratings.
+A Steam-styled desktop app that helps you turn your Steam playtime into polished, shareable game reviews.
 
-The app automatically calculates a final score using weighted categories, shows an animated rating bar, and copies the finished review straight to your clipboard.
-
----
-
-## Features
-
-- Steam-inspired dark UI
-- Login using your **Steam API key** and **64-bit Steam ID**
-- Automatically fetches your owned Steam games
-- Search your library quickly
-- Review games category by category with explicit **Previous/Next** step navigation
-- Pre-review game summary screen (name, AppID, and playtime)
-- Weighted score calculation for more meaningful ratings
-- Animated 10-box rating bar
-- Automatically copies the completed review to clipboard
-- Copy the review again with one click from the result screen
-- Save generated reviews as **.txt** or **.md**
-- Use **Edit Ratings** on the result screen to adjust category scores without restarting
-- In-app **About** dialog with version, latest release/release notes, and issue links
-- Automatic update checker banner with one-click download when updates are available
-- Visible in-app version footer on main screens (matches packaged EXE version)
-- Saves credentials locally for quick relogin
-- Caches your game list for faster loading
+You pick a game, rate guided categories step by step, and the app builds a clean final review with an overall score.
 
 ---
 
-## Categories Rated
+## What You Can Do
 
-The review system scores games across these categories:
-
-- **Graphics**
-- **Gameplay**
-- **Audio**
-- **Story**
-- **Difficulty**
-- **Bugs**
-
-Each category has its own weight in the final score:
-
-| Category   | Weight |
-|------------|--------|
-| Graphics   | 1.5    |
-| Gameplay   | 2.0    |
-| Audio      | 1.0    |
-| Story      | 1.2    |
-| Difficulty | 0.8    |
-| Bugs       | 1.8    |
-
-This means **Gameplay** and **Bugs** have the biggest impact on the final rating.
+- Sign in with your Steam API key and SteamID64
+- Load and search your owned games quickly
+- Preview game details before starting a review
+- Rate categories one step at a time with clear Previous and Next controls
+- Click anywhere on an option row to select it
+- Use keyboard shortcuts while rating:
+	- 1-9 selects scores 1-9
+	- 0 selects 10 out of 10
+	- Enter moves to the next step
+- Generate a final weighted score automatically
+- Copy the finished review to your clipboard instantly
+- Save reviews as text or markdown files
+- Re-open and edit ratings from the result screen
+- Check app version and update status from inside the app
 
 ---
 
-## Screenshot / Workflow
+## What You Need
 
-1. Launch the app
-2. Enter your Steam API key and 64-bit Steam ID
-3. Fetch your Steam library
-4. Search and select a game
-5. Confirm game details on the summary screen
-6. Rate each category with Previous/Next controls
-7. View the generated review
-8. The review is automatically copied to your clipboard
-9. Optionally use **Copy Again**, **Edit Ratings**, or save it as `.txt` / `.md`
+- A Windows PC
+- A Steam account
+- A Steam API key
+- Your 64-bit Steam ID (SteamID64)
+- Internet access when loading your Steam library
 
 ---
 
-## Example Output
+## Quick Start
 
-```text
-Half-Life 2
+1. Open the app.
+2. Enter your Steam API key and SteamID64.
+3. Load your library and choose a game.
+4. Review the game summary screen.
+5. Start the rating flow and score each category.
+6. Generate your final review.
+7. Copy, edit, or save your review.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PLAYTIME: 24 Hours
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
 
-RATING BREAKDOWN:
+## Review Experience
 
-• Graphics: 8/10 - "Pretty decent"
-• Gameplay: 10/10 - "Can't stop playing"
-• Audio: 9/10 - "Epic soundtrack"
-• Story: 10/10 - "Story so good, I cried for days"
-• Difficulty: 7/10 - "Challenging but fair"
-• Bugs: 8/10 - "Minor annoyances"
+- Category names and rating options are presented as a guided flow.
+- You always know your position with step progress (for example, Step 3 of 6).
+- Next stays disabled until a rating is selected, so it is hard to skip by mistake.
+- Previous keeps your earlier selections so you can revise quickly.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-★★★★★★★★★☆ 9/10
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+
+## Optional AI Category Assist
+
+- When available, the app can prepare game-specific review categories and weighting automatically.
+- If AI is unavailable, the app still works with a built-in fallback profile.
+- You can continue reviewing either way.
+
+---
+
+## Privacy And Local Data
+
+- Your review text is generated locally in the app and copied only when you choose to copy it.
+- The app can save your login details locally for faster sign-in next time.
+- Your game library list may be cached locally to improve loading speed.
+
+---
+
+## Need Help
+
+- Use the About screen for release info and support links.
+- For bug reports or feature requests, use the Issues page linked in the app.

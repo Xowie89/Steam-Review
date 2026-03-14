@@ -17,6 +17,14 @@ Desktop.ini
 .github/instructions/
 
 # ------------------------------
+# Development / test-only files
+# ------------------------------
+tests/
+tools/
+.vscode-test/
+*.code-workspace
+
+# ------------------------------
 # Python cache and test output
 # ------------------------------
 __pycache__/
@@ -26,9 +34,24 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.pyre/
+.pytype/
+.dmypy.json
 .coverage
+.coverage.*
+*.cover
+*.py,cover
 coverage.xml
 htmlcov/
+nosetests.xml
+junit.xml
+.junit.xml
+test-results/
+reports/
+coverage/
 
 # ------------------------------
 # Virtual environments
