@@ -62,6 +62,52 @@ SUMMARY_IMAGE_WIDTH = 440
 CATEGORY_OPTION_ROW_DEFAULT = "#2b2f34"
 CATEGORY_OPTION_ROW_HOVER = "#38424c"
 CATEGORY_OPTION_ROW_SELECTED = "#3a6684"
+NETWORK_RETRY_ATTEMPTS = 3
+NETWORK_RETRY_INITIAL_DELAY_SECONDS = 0.5
+NETWORK_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+NETWORK_RETRYABLE_SERVER_STATUS_CODES = {500, 502, 503, 504}
+
+
+def request_with_retry(
+    method,
+    url,
+    retry_status_codes=None,
+    retry_attempts=NETWORK_RETRY_ATTEMPTS,
+    retry_initial_delay=NETWORK_RETRY_INITIAL_DELAY_SECONDS,
+    **request_kwargs,
+):
+    """Perform an HTTP request with short backoff for transient failures."""
+    status_codes = set(
+        retry_status_codes
+        if retry_status_codes is not None
+        else NETWORK_RETRYABLE_STATUS_CODES
+    )
+    attempts = max(1, int(retry_attempts))
+    base_delay = max(0.0, float(retry_initial_delay))
+    last_error = None
+
+    for attempt_index in range(attempts):
+        is_last_attempt = attempt_index >= attempts - 1
+        try:
+            response = requests.request(method, url, **request_kwargs)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as error:
+            last_error = error
+            if is_last_attempt:
+                raise
+            if base_delay > 0:
+                time.sleep(base_delay * (2 ** attempt_index))
+            continue
+
+        if response.status_code in status_codes and not is_last_attempt:
+            if base_delay > 0:
+                time.sleep(base_delay * (2 ** attempt_index))
+            continue
+
+        return response
+
+    if last_error:
+        raise last_error
+    raise requests.exceptions.RequestException("Request failed without a response.")
 
 
 def read_env_flag(name, default=False):
@@ -929,7 +975,13 @@ def update_check_worker():
             "Accept": "application/vnd.github+json",
             "User-Agent": "Steam-Review-Generator"
         }
-        response = requests.get(GITHUB_LATEST_RELEASE_API_URL, headers=headers, timeout=8)
+        response = request_with_retry(
+            "GET",
+            GITHUB_LATEST_RELEASE_API_URL,
+            headers=headers,
+            timeout=8,
+            retry_status_codes=NETWORK_RETRYABLE_SERVER_STATUS_CODES,
+        )
         response.raise_for_status()
 
         data = response.json()
@@ -2329,7 +2381,8 @@ def fetch_store_game_details(app_id):
         "User-Agent": "Steam-Review-Generator",
     }
 
-    response = requests.get(
+    response = request_with_retry(
+        "GET",
         STEAM_STORE_APP_DETAILS_URL,
         params=params,
         headers=headers,
@@ -2377,7 +2430,12 @@ def fetch_store_image_bytes(image_url):
         "Accept": "image/*",
         "User-Agent": "Steam-Review-Generator",
     }
-    response = requests.get(image_url, headers=headers, timeout=STEAM_STORE_TIMEOUT_SECONDS)
+    response = request_with_retry(
+        "GET",
+        image_url,
+        headers=headers,
+        timeout=STEAM_STORE_TIMEOUT_SECONDS,
+    )
     response.raise_for_status()
     return response.content
 
@@ -2626,7 +2684,7 @@ def fetch_owned_games(api_key, user_steam_id):
         'format': 'json'
     }
 
-    response = requests.get(url, params=params, timeout=10)
+    response = request_with_retry("GET", url, params=params, timeout=10)
     response.raise_for_status()
 
     data = response.json()
@@ -2643,7 +2701,12 @@ def fetch_steam_username(api_key, user_steam_id):
             'key': api_key,
             'steamids': user_steam_id
         }
-        summary_response = requests.get(summary_url, params=summary_params, timeout=10)
+        summary_response = request_with_retry(
+            "GET",
+            summary_url,
+            params=summary_params,
+            timeout=10,
+        )
         summary_response.raise_for_status()
         summary_data = summary_response.json()
         players = summary_data.get('response', {}).get('players', [])
